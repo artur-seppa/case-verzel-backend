@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Seat } from '../../../domain/entities/seat';
+import { SeatStatus } from '../../../domain/enums';
+import { ConflictError, NotFoundError } from '../../../domain/errors';
 import {
   CreateSeatInput,
   SeatRepository,
@@ -33,5 +35,25 @@ export class TypeOrmSeatRepository implements SeatRepository {
 
   countByEventId(eventId: string): Promise<number> {
     return this.repository.countBy({ eventId });
+  }
+
+  holdSeat(seatId: string, reservationId: string): Promise<Seat> {
+    return this.repository.manager.transaction(async (manager) => {
+      const seat = await manager.findOne(SeatEntity, {
+        where: { id: seatId },
+        lock: { mode: 'pessimistic_write' },
+      });
+
+      if (!seat) {
+        throw new NotFoundError('Assento', seatId);
+      }
+      if (seat.status !== SeatStatus.AVAILABLE) {
+        throw new ConflictError('Assento não está mais disponível');
+      }
+
+      seat.status = SeatStatus.HELD;
+      seat.reservationId = reservationId;
+      return manager.save(seat);
+    });
   }
 }
