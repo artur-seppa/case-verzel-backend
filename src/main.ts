@@ -19,10 +19,6 @@ async function bootstrap() {
   const config = app.get(ConfigService);
   const fastify = app.getHttpAdapter().getInstance();
 
-  // @fastify/helmet and @fastify/cookie type their plugin signature against
-  // the generic `FastifyTypeProvider`, which doesn't structurally match the
-  // concrete `FastifyTypeProviderDefault` instance Nest hands back here.
-  // Cosmetic mismatch only — harmless at runtime.
   await fastify.register(helmet as never);
   await fastify.register(cookie as never, {
     secret: config.getOrThrow<string>('COOKIE_SECRET'),
