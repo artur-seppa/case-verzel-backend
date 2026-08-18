@@ -4,6 +4,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ZodSerializerInterceptor, ZodValidationPipe } from 'nestjs-zod';
 import { validateEnv } from './config/env.schema';
+import { entities } from './shared/infra/database/entities';
 import { AppController } from './app.controller';
 import { AuthModule } from './modules/auth/auth.module';
 import { EventsModule } from './modules/events/events.module';
@@ -24,8 +25,10 @@ import { GatekeeperModule } from './modules/gatekeeper/gatekeeper.module';
       useFactory: (config: ConfigService) => ({
         type: 'postgres',
         url: config.getOrThrow<string>('DATABASE_URL'),
-        autoLoadEntities: true,
-        synchronize: config.get('NODE_ENV') !== 'production',
+        entities,
+        migrations: [__dirname + '/shared/infra/database/migrations/*.js'],
+        migrationsRun: true,
+        synchronize: false,
         ssl:
           config.get('NODE_ENV') === 'production'
             ? { rejectUnauthorized: false }
