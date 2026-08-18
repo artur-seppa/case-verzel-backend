@@ -5,6 +5,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ZodSerializerInterceptor, ZodValidationPipe } from 'nestjs-zod';
 import { validateEnv } from './config/env.schema';
 import { entities } from './shared/infra/database/entities';
+import { AuthGuardsModule } from './shared/http/guards/auth-guards.module';
 import { AppController } from './app.controller';
 import { AuthModule } from './modules/auth/auth.module';
 import { EventsModule } from './modules/events/events.module';
@@ -35,6 +36,7 @@ import { GatekeeperModule } from './modules/gatekeeper/gatekeeper.module';
             : false,
       }),
     }),
+    AuthGuardsModule,
     AuthModule,
     EventsModule,
     CatalogModule,
