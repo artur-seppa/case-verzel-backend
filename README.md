@@ -62,7 +62,7 @@ Os testes usam um banco `case_verzel_test` separado (mesma instância Postgres d
 | Cliente | cliente2@verzel.com |
 | Portaria | portaria@verzel.com |
 
-Evento e ingressos de exemplo ainda serão adicionados ao seed quando o módulo de eventos estiver pronto.
+Também cria um evento publicado ("Homem-Aranha: Um Novo Dia", TMDb) com 24 assentos disponíveis, daqui a 14 dias. Os dados do filme ficam fixos no próprio script (não depende da TMDb estar no ar pra semear).
 
 ## Estrutura
 
