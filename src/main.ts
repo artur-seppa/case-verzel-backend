@@ -5,6 +5,7 @@ import {
 import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { cleanupOpenApiDoc } from 'nestjs-zod';
 import helmet from '@fastify/helmet';
 import cookie from '@fastify/cookie';
 import { AppModule } from './app.module';
@@ -38,7 +39,9 @@ async function bootstrap() {
     .setVersion('1.0')
     .addCookieAuth('access_token')
     .build();
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
+  const document = cleanupOpenApiDoc(
+    SwaggerModule.createDocument(app, swaggerConfig),
+  );
   SwaggerModule.setup('docs', app, document);
 
   const port = config.get<number>('PORT') ?? 3000;

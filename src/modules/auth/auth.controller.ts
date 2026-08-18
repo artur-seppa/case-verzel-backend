@@ -8,9 +8,9 @@ import {
   Res,
   UseGuards,
 } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { ApiCookieAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { FastifyReply } from 'fastify';
-import { ZodSerializerDto } from 'nestjs-zod';
+import { ZodResponse } from 'nestjs-zod';
 import type {
   AuthenticatedUser,
   RequestWithUser,
@@ -44,7 +44,8 @@ export class AuthController {
   ) {}
 
   @Post('register')
-  @ZodSerializerDto(UserResponseDto)
+  @ApiOperation({ summary: 'Cria uma conta de cliente ou organizador' })
+  @ZodResponse({ status: 201, type: UserResponseDto })
   async register(
     @Body() dto: RegisterDto,
     @Res({ passthrough: true }) reply: FastifyReply,
@@ -55,8 +56,8 @@ export class AuthController {
   }
 
   @Post('login')
-  @HttpCode(200)
-  @ZodSerializerDto(UserResponseDto)
+  @ApiOperation({ summary: 'Autentica e define os cookies de sessão' })
+  @ZodResponse({ status: 200, type: UserResponseDto })
   async login(
     @Body() dto: LoginDto,
     @Res({ passthrough: true }) reply: FastifyReply,
@@ -67,8 +68,8 @@ export class AuthController {
   }
 
   @Post('refresh')
-  @HttpCode(200)
-  @ZodSerializerDto(UserResponseDto)
+  @ApiOperation({ summary: 'Rotaciona o par de tokens usando o refresh token' })
+  @ZodResponse({ status: 200, type: UserResponseDto })
   async refresh(
     @Req() request: RequestWithUser,
     @Res({ passthrough: true }) reply: FastifyReply,
@@ -85,6 +86,7 @@ export class AuthController {
   }
 
   @Post('logout')
+  @ApiOperation({ summary: 'Revoga o refresh token e limpa os cookies' })
   @HttpCode(204)
   async logout(
     @Req() request: RequestWithUser,
@@ -99,7 +101,9 @@ export class AuthController {
 
   @Get('me')
   @UseGuards(JwtAuthGuard)
-  @ZodSerializerDto(UserResponseDto)
+  @ApiCookieAuth('access_token')
+  @ApiOperation({ summary: 'Retorna o usuário autenticado' })
+  @ZodResponse({ status: 200, type: UserResponseDto })
   async me(@CurrentUser() currentUser: AuthenticatedUser) {
     return this.getCurrentUserUseCase.execute(currentUser.id);
   }

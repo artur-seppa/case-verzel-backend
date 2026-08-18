@@ -1,6 +1,6 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
-import { ZodSerializerDto } from 'nestjs-zod';
+import { ApiCookieAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ZodResponse } from 'nestjs-zod';
 import { UserRole } from '../../shared/domain/enums';
 import { Roles } from '../../shared/http/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../shared/http/guards/jwt-auth.guard';
@@ -11,12 +11,16 @@ import { ListNowPlayingUseCase } from './use-cases/list-now-playing.use-case';
 @ApiTags('catalog')
 @Controller('catalog')
 @UseGuards(JwtAuthGuard, RolesGuard)
+@ApiCookieAuth('access_token')
 export class CatalogController {
   constructor(private readonly listNowPlayingUseCase: ListNowPlayingUseCase) {}
 
   @Get('movies')
   @Roles(UserRole.ORGANIZER)
-  @ZodSerializerDto([CatalogMovieResponseDto])
+  @ApiOperation({
+    summary: 'Filmes em cartaz na TMDb, pro organizador escolher',
+  })
+  @ZodResponse({ status: 200, type: [CatalogMovieResponseDto] })
   listMovies(@Query('page') page?: string) {
     return this.listNowPlayingUseCase.execute(page ? Number(page) : 1);
   }
