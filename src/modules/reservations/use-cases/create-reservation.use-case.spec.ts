@@ -1,4 +1,3 @@
-import { ulid } from 'ulid';
 import { describe, expect, it } from 'vitest';
 import {
   ReservationStatus,
@@ -10,9 +9,11 @@ import { buildAuthDependencies } from '../../../../test/support/build-auth-depen
 import { buildEventsDependencies } from '../../../../test/support/build-events-dependencies';
 import { buildReservationsDependencies } from '../../../../test/support/build-reservations-dependencies';
 import { buildCreateUserInput } from '../../../../test/factories/user.factory';
+import { buildCreateEventInput } from '../../../../test/factories/event.factory';
+import { buildCreateSeatInput } from '../../../../test/factories/seat.factory';
 import { CreateReservationUseCase } from './create-reservation.use-case';
 
-async function setupEventWithSeats(capacity: number) {
+async function setupEventWithOneSeat() {
   const { userRepository } = await buildAuthDependencies();
   const { eventRepository, seatRepository } = await buildEventsDependencies();
   const { reservationRepository } = await buildReservationsDependencies();
@@ -20,20 +21,11 @@ async function setupEventWithSeats(capacity: number) {
   const organizer = await userRepository.create(
     await buildCreateUserInput({ role: UserRole.ORGANIZER }),
   );
-  const event = await eventRepository.create({
-    id: ulid(),
-    organizerId: organizer.id,
-    title: 'Evento de Teste',
-    synopsis: null,
-    posterUrl: null,
-    tmdbId: '1',
-    date: new Date(Date.now() + 86_400_000),
-    location: 'Local de Teste',
-    capacity,
-    price: '10.00',
-  });
+  const event = await eventRepository.create(
+    buildCreateEventInput(organizer.id, { capacity: 1 }),
+  );
   const [seat] = await seatRepository.createMany([
-    { id: ulid(), eventId: event.id, row: 'A', number: 1, label: 'A1' },
+    buildCreateSeatInput(event.id),
   ]);
 
   const useCase = new CreateReservationUseCase(
@@ -54,7 +46,7 @@ async function createClient() {
 describe('CreateReservationUseCase', () => {
   it('holds the seat and creates a pending reservation', async () => {
     const { event, seat, seatRepository, useCase } =
-      await setupEventWithSeats(1);
+      await setupEventWithOneSeat();
     const client = await createClient();
 
     const reservation = await useCase.execute({
@@ -71,7 +63,7 @@ describe('CreateReservationUseCase', () => {
   });
 
   it('rejects a seat that does not belong to the given event', async () => {
-    const { seat, useCase } = await setupEventWithSeats(1);
+    const { seat, useCase } = await setupEventWithOneSeat();
     const client = await createClient();
 
     await expect(
@@ -85,7 +77,7 @@ describe('CreateReservationUseCase', () => {
 
   it('never lets two concurrent reservations win the same seat', async () => {
     const { event, seat, seatRepository, useCase } =
-      await setupEventWithSeats(1);
+      await setupEventWithOneSeat();
     const [clientA, clientB] = await Promise.all([
       createClient(),
       createClient(),

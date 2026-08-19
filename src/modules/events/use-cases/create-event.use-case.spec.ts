@@ -2,10 +2,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { NotFoundError } from '../../../shared/domain/errors';
 import { buildAuthDependencies } from '../../../../test/support/build-auth-dependencies';
 import { buildEventsDependencies } from '../../../../test/support/build-events-dependencies';
-import {
-  buildCatalogMovie,
-  FakeCatalogService,
-} from '../../../../test/support/fake-catalog-service';
+import { FakeCatalogService } from '../../../../test/support/fake-catalog-service';
+import { buildCatalogMovie } from '../../../../test/factories/catalog-movie.factory';
 import { buildCreateUserInput } from '../../../../test/factories/user.factory';
 import { UserRole } from '../../../shared/domain/enums';
 import { CreateEventUseCase } from './create-event.use-case';

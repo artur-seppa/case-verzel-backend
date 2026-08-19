@@ -82,7 +82,7 @@ async function seed() {
     console.log(`evento já existe: ${existingEvent.title}`);
   } else if (organizerId) {
     const eventDate = new Date();
-    eventDate.setDate(eventDate.getDate() + 14);
+    eventDate.setUTCDate(eventDate.getUTCDate() + 14);
 
     const event = await eventRepository.save(
       eventRepository.create({
