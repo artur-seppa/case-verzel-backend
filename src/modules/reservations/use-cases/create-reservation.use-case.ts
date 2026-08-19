@@ -7,6 +7,7 @@ import { RESERVATION_REPOSITORY } from '../../../shared/domain/repositories/rese
 import type { ReservationRepository } from '../../../shared/domain/repositories/reservation.repository';
 import { SEAT_REPOSITORY } from '../../../shared/domain/repositories/seat.repository';
 import type { SeatRepository } from '../../../shared/domain/repositories/seat.repository';
+import { RESERVATION_HOLD_SECONDS } from '../reservation-hold.token';
 
 export interface CreateReservationInput {
   eventId: string;
@@ -20,6 +21,7 @@ export class CreateReservationUseCase {
     @Inject(RESERVATION_REPOSITORY)
     private readonly reservationRepository: ReservationRepository,
     @Inject(SEAT_REPOSITORY) private readonly seatRepository: SeatRepository,
+    @Inject(RESERVATION_HOLD_SECONDS) private readonly holdSeconds: number,
   ) {}
 
   async execute(input: CreateReservationInput): Promise<Reservation> {
@@ -33,6 +35,7 @@ export class CreateReservationUseCase {
       eventId: input.eventId,
       clientId: input.clientId,
       status: ReservationStatus.PENDING_PAYMENT,
+      expiresAt: new Date(Date.now() + this.holdSeconds * 1000),
     });
 
     try {

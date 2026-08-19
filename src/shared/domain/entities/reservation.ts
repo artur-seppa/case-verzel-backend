@@ -5,5 +5,6 @@ export interface Reservation {
   eventId: string;
   clientId: string;
   status: ReservationStatus;
+  expiresAt: Date;
   createdAt: Date;
 }

@@ -968,7 +968,7 @@ git commit -m "feat: replace ProcessPaymentUseCase with RequestPaymentUseCase + 
 - Create: `src/shared/infra/redis/redis-connection.token.ts`
 - Create: `src/shared/infra/redis/redis.module.ts`
 - Modify: `src/app.module.ts`
-- Create: `test/support/redis-connection.spec.ts`
+- Create: `src/shared/infra/redis/redis-connection.spec.ts`
 
 **Interfaces:**
 - Produces: `REDIS_CONNECTION` DI token providing a shared `ioredis.Redis` instance (consumed by Task 5's `BullModule.forRootAsync`, Task 8's `QueueEvents` provider, and Task 7's worker bootstrap).
@@ -1105,7 +1105,7 @@ and add to the `imports` array, right after `TypeOrmModule.forRootAsync(...)`:
 
 - [ ] **Step 10: Write the smoke spec**
 
-Create `test/support/redis-connection.spec.ts`:
+Create `src/shared/infra/redis/redis-connection.spec.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
@@ -1154,14 +1154,23 @@ import Redis from 'ioredis';
 import { resetDatabase } from './test-data-source';
 
 const testRedis = new Redis(process.env.REDIS_URL!, {
-  maxRetriesPerRequest: null,
+  maxRetriesPerRequest: 1,
+  enableOfflineQueue: false,
+  retryStrategy: () => null,
+  lazyConnect: true,
 });
 
 afterEach(async () => {
   await resetDatabase();
-  await testRedis.flushdb();
+  try {
+    await testRedis.flushdb();
+  } catch {
+    testRedis.disconnect();
+  }
 });
 ```
+
+This client is test-only cleanup, never touched by BullMQ, so it does not need `maxRetriesPerRequest: null` — instead it's tuned to fail fast (`enableOfflineQueue: false`, no retry) and swallow the failure rather than hang. Without this, an unreachable Redis makes ioredis queue/retry the flush indefinitely, which times out every single test in the suite via this same `afterEach`, not just Redis-specific ones — found during Task 4 implementation, fixed inline here rather than left as a footgun for whoever runs the suite before Redis is up.
 
 - [ ] **Step 12: Run the spec and the full suite**
 
@@ -1174,7 +1183,7 @@ Expected: PASS — confirms `AppModule` still compiles/boots correctly with the 
 - [ ] **Step 13: Commit**
 
 ```bash
-git add package.json package-lock.json src/config/env.schema.ts .env.example .env.test docker-compose.yml src/shared/infra/redis/ src/app.module.ts test/support/redis-connection.spec.ts test/support/setup.ts
+git add package.json package-lock.json src/config/env.schema.ts .env.example .env.test docker-compose.yml src/shared/infra/redis/ src/app.module.ts test/support/setup.ts
 git commit -m "feat: add Redis infrastructure (BullMQ dependency, docker-compose service, RedisModule)"
 ```
 
@@ -1551,7 +1560,7 @@ export class ChargeReservationProcessor extends WorkerHost {
   async onFailed(
     job: Job<ChargeReservationInput> | undefined,
   ): Promise<void> {
-    if (!job) return;
+    if (!job || !job.finishedOn) return;
     const reverted =
       await this.reservationRepository.revertToPendingIfProcessing(
         job.data.reservationId,
@@ -1565,7 +1574,7 @@ export class ChargeReservationProcessor extends WorkerHost {
 }
 ```
 
-`@OnWorkerEvent('failed')` fires once per job, only once the job has truly finished retrying (all `attempts` used, or `UnrecoverableError` thrown) — not once per intermediate attempt. Task 6's own spec (below) verifies this empirically rather than assuming it.
+**Correction, found by running Task 6's own spec against real Redis (not assumable from reading the docs alone):** `@OnWorkerEvent('failed')` actually fires on *every* attempt failure, not just the final one — confirmed against the installed package's own doc comment (`node_modules/bullmq/dist/esm/classes/worker.d.ts`: "'failed' ... triggered when a job has thrown an exception," with no exhausted-retries qualifier). Without the `!job.finishedOn` guard above, the handler reverted the reservation to `pending_payment` after the *first* failed attempt of the retry test, and then the retry's second (successful) attempt hit `ConflictError` trying to `confirmIfProcessing` a reservation that was no longer `processing` — the job then failed for real with that `ConflictError` as its message. `job.finishedOn` is only set by BullMQ once a job is truly done (confirmed in `node_modules/bullmq/dist/cjs/classes/job.js`'s `moveToFailed`: `finishedOn` is populated only in the non-retry branch); it stays unset while the job is being retried, which is exactly the signal needed here.
 
 - [ ] **Step 6: Create `WorkerPaymentsModule`**
 
@@ -1635,12 +1644,14 @@ Create `src/modules/payments/use-cases/charge-reservation.processor.spec.ts`:
 ```ts
 import { Test } from '@nestjs/testing';
 import { BullModule } from '@nestjs/bullmq';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { QueueEvents } from 'bullmq';
 import { ulid } from 'ulid';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { ReservationStatus, SeatStatus, UserRole } from '../../../shared/domain/enums';
 import { PAYMENT_GATEWAY } from '../../../shared/domain/services/payment-gateway.service';
+import { entities } from '../../../shared/infra/database/entities';
 import { PAYMENTS_QUEUE_NAME } from '../../../shared/infra/queue/payments-queue.constants';
 import { buildAuthDependencies } from '../../../../test/support/build-auth-dependencies';
 import { buildEventsDependencies } from '../../../../test/support/build-events-dependencies';
@@ -1712,14 +1723,23 @@ describe('ChargeReservationProcessor (real Redis + Postgres)', () => {
       Test.createTestingModule({
         imports: [
           ConfigModule.forRoot({ isGlobal: true }),
+          TypeOrmModule.forRootAsync({
+            inject: [ConfigService],
+            useFactory: (config: ConfigService) => ({
+              type: 'postgres',
+              url: config.getOrThrow<string>('DATABASE_URL'),
+              entities,
+              synchronize: false,
+              ssl: false,
+            }),
+          }),
           BullModule.forRoot({ connection: testQueue.connection }),
           WorkerPaymentsModule,
         ],
       }),
     ).compile();
 
-    const app = moduleRef.createNestApplicationContext();
-    await app.init();
+    const app = await moduleRef.init();
     try {
       return await run();
     } finally {
@@ -1841,6 +1861,8 @@ describe('ChargeReservationProcessor (real Redis + Postgres)', () => {
 
 Only one `withWorker` call is ever active at a time (each awaits `app.close()` in its `finally` before returning), so there is never more than one `Worker` consuming the shared `payments` queue — avoids a nondeterministic race between two live workers picking up the same job.
 
+The `TypeOrmModule.forRootAsync` block in `withWorker` is required, not optional decoration: `WorkerPaymentsModule`'s `TypeOrmModule.forFeature([PaymentEntity, TicketEntity])` (and `EventsModule`/`ReservationsModule`'s own `forFeature` calls, pulled in transitively) need a root `DataSource` to resolve against. An earlier draft of this harness omitted it, which compiles fine but fails at runtime with "Nest can't resolve dependencies of the PaymentEntityRepository" — only surfaces once Redis is actually reachable and the tests get far enough to hit real repository access.
+
 - [ ] **Step 8: Run the spec**
 
 Run: `npm test -- charge-reservation.processor.spec.ts`
@@ -1884,6 +1906,7 @@ import { validateEnv } from './config/env.schema';
 import { entities } from './shared/infra/database/entities';
 import { REDIS_CONNECTION } from './shared/infra/redis/redis-connection.token';
 import { RedisModule } from './shared/infra/redis/redis.module';
+import { AuthGuardsModule } from './shared/http/guards/auth-guards.module';
 import { WorkerPaymentsModule } from './modules/payments/worker-payments.module';
 
 @Module({
@@ -1907,11 +1930,14 @@ import { WorkerPaymentsModule } from './modules/payments/worker-payments.module'
       inject: [REDIS_CONNECTION],
       useFactory: (connection: Redis) => ({ connection }),
     }),
+    AuthGuardsModule,
     WorkerPaymentsModule,
   ],
 })
 export class WorkerModule {}
 ```
+
+`AuthGuardsModule` is required here even though the worker has no HTTP surface: `EventsModule` and `ReservationsModule` (imported transitively via `WorkerPaymentsModule`) each bundle an HTTP `@Controller` alongside their repository providers, and those controllers depend on `JwtAuthGuard`/`JwtService`. Nest resolves every provider a module graph declares at boot, including controllers that will never receive a request in this HTTP-less process, so the guard dependency must be satisfiable even though it's never invoked (`createApplicationContext` never runs the HTTP pipeline, so the guard has zero runtime effect here — this is a DI-resolution requirement only, not a behavior change). This is a pre-existing architectural coupling in `EventsModule`/`ReservationsModule` (mixing controllers with domain providers) that this plan didn't cause and isn't in scope to fix — found while implementing this task.
 
 No `migrationsRun`/`migrations` config here — the HTTP process (`AppModule`) already runs migrations on boot; running them a second time from the worker risks two processes racing to apply the same migration on deploy.
 
@@ -2302,13 +2328,16 @@ export class PaymentEventsStream {
         returnvalue,
       }: {
         jobId: string;
-        returnvalue: string;
+        returnvalue: ChargeReservationJobResult;
       }) => {
         if (jobId !== reservationId) return;
-        const result = JSON.parse(returnvalue) as ChargeReservationJobResult;
-        const event: PaymentEvent = result.ticket
-          ? { type: 'confirmed', payment: result.payment, ticket: result.ticket }
-          : { type: 'declined', payment: result.payment };
+        const event: PaymentEvent = returnvalue.ticket
+          ? {
+              type: 'confirmed',
+              payment: returnvalue.payment,
+              ticket: returnvalue.ticket,
+            }
+          : { type: 'declined', payment: returnvalue.payment };
         subscriber.next({ data: event });
         subscriber.complete();
       };
@@ -2337,6 +2366,8 @@ export class PaymentEventsStream {
   }
 }
 ```
+
+`returnvalue` on the `completed` event is already deserialized by BullMQ, not a JSON string — confirmed against the installed package's own doc comment (`node_modules/bullmq/dist/esm/classes/queue-events.d.ts`: "`returnvalue` - The value returned by the job's processor, deserialized from JSON."). An earlier draft of this code called `JSON.parse(returnvalue)`, which throws inside the event listener when Redis is actually live — the exception never reaches the `Observable`, so `subscriber.next()`/`.complete()` are never called and the stream hangs until the test's own timeout. Found only once Redis was reachable and the "confirmed"/"declined" tests started really timing out instead of failing on a connection error.
 
 - [ ] **Step 7: Run the spec**
 

@@ -11,38 +11,25 @@ import { TypeOrmPaymentRepository } from '../../shared/infra/database/repositori
 import { TypeOrmTicketRepository } from '../../shared/infra/database/repositories/typeorm-ticket.repository';
 import { PAYMENT_GATEWAY } from '../../shared/domain/services/payment-gateway.service';
 import type { PaymentGatewayService } from '../../shared/domain/services/payment-gateway.service';
-import { PAYMENT_QUEUE } from '../../shared/domain/services/payment-queue.service';
 import { SimulatedPaymentGatewayService } from '../../shared/infra/payment/simulated-payment-gateway.service';
 import { StripePaymentGatewayService } from '../../shared/infra/payment/stripe-payment-gateway.service';
-import { BullMqPaymentQueueService } from '../../shared/infra/queue/bullmq-payment-queue.service';
 import { PAYMENTS_QUEUE_NAME } from '../../shared/infra/queue/payments-queue.constants';
 import { QR_SECRET } from '../../shared/utils/qr-token';
 import { EventsModule } from '../events/events.module';
 import { ReservationsModule } from '../reservations/reservations.module';
-import { PaymentsController } from './payments.controller';
-import { PAYMENT_QUEUE_EVENTS } from './payment-queue-events.token';
-import { PaymentQueueEventsProvider } from './payment-queue-events.provider';
-import { PaymentEventsStream } from './payment-events.stream';
-import { RequestPaymentUseCase } from './use-cases/request-payment.use-case';
+import { ChargeReservationProcessor } from './use-cases/charge-reservation.processor';
+import { ChargeReservationUseCase } from './use-cases/charge-reservation.use-case';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([PaymentEntity, TicketEntity]),
     EventsModule,
     ReservationsModule,
-    BullModule.registerQueue({
-      name: PAYMENTS_QUEUE_NAME,
-      defaultJobOptions: {
-        attempts: 3,
-        backoff: { type: 'exponential', delay: 2000 },
-      },
-    }),
+    BullModule.registerQueue({ name: PAYMENTS_QUEUE_NAME }),
   ],
-  controllers: [PaymentsController],
   providers: [
     { provide: PAYMENT_REPOSITORY, useClass: TypeOrmPaymentRepository },
     { provide: TICKET_REPOSITORY, useClass: TypeOrmTicketRepository },
-    { provide: PAYMENT_QUEUE, useClass: BullMqPaymentQueueService },
     {
       provide: QR_SECRET,
       useFactory: (config: ConfigService) =>
@@ -60,9 +47,8 @@ import { RequestPaymentUseCase } from './use-cases/request-payment.use-case';
       },
       inject: [ConfigService],
     },
-    RequestPaymentUseCase,
-    { provide: PAYMENT_QUEUE_EVENTS, useClass: PaymentQueueEventsProvider },
-    PaymentEventsStream,
+    ChargeReservationUseCase,
+    ChargeReservationProcessor,
   ],
 })
-export class PaymentsModule {}
+export class WorkerPaymentsModule {}

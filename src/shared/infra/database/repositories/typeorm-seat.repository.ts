@@ -33,6 +33,10 @@ export class TypeOrmSeatRepository implements SeatRepository {
     return this.repository.findOneBy({ id });
   }
 
+  findByReservationId(reservationId: string): Promise<Seat | null> {
+    return this.repository.findOneBy({ reservationId });
+  }
+
   countByEventId(eventId: string): Promise<number> {
     return this.repository.countBy({ eventId });
   }
@@ -53,6 +57,41 @@ export class TypeOrmSeatRepository implements SeatRepository {
 
       seat.status = SeatStatus.HELD;
       seat.reservationId = reservationId;
+      return manager.save(seat);
+    });
+  }
+
+  async markSold(seatId: string): Promise<Seat> {
+    return this.transitionFromHeld(seatId, {
+      status: SeatStatus.SOLD,
+    });
+  }
+
+  async release(seatId: string): Promise<Seat> {
+    return this.transitionFromHeld(seatId, {
+      status: SeatStatus.AVAILABLE,
+      reservationId: null,
+    });
+  }
+
+  private transitionFromHeld(
+    seatId: string,
+    changes: Partial<Pick<Seat, 'status' | 'reservationId'>>,
+  ): Promise<Seat> {
+    return this.repository.manager.transaction(async (manager) => {
+      const seat = await manager.findOne(SeatEntity, {
+        where: { id: seatId },
+        lock: { mode: 'pessimistic_write' },
+      });
+
+      if (!seat) {
+        throw new NotFoundError('Assento', seatId);
+      }
+      if (seat.status !== SeatStatus.HELD) {
+        throw new ConflictError('Assento não está reservado no momento');
+      }
+
+      Object.assign(seat, changes);
       return manager.save(seat);
     });
   }
