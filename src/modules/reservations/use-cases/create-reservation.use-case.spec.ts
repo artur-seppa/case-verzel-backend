@@ -13,6 +13,8 @@ import { buildCreateEventInput } from '../../../../test/factories/event.factory'
 import { buildCreateSeatInput } from '../../../../test/factories/seat.factory';
 import { CreateReservationUseCase } from './create-reservation.use-case';
 
+const HOLD_SECONDS = 600;
+
 async function setupEventWithOneSeat() {
   const { userRepository } = await buildAuthDependencies();
   const { eventRepository, seatRepository } = await buildEventsDependencies();
@@ -31,6 +33,7 @@ async function setupEventWithOneSeat() {
   const useCase = new CreateReservationUseCase(
     reservationRepository,
     seatRepository,
+    HOLD_SECONDS,
   );
 
   return { event, seat, seatRepository, reservationRepository, useCase };
@@ -60,6 +63,26 @@ describe('CreateReservationUseCase', () => {
     const heldSeat = await seatRepository.findById(seat.id);
     expect(heldSeat?.status).toBe(SeatStatus.HELD);
     expect(heldSeat?.reservationId).toBe(reservation.id);
+  });
+
+  it('sets an expiration based on the configured hold duration', async () => {
+    const { event, seat, useCase } = await setupEventWithOneSeat();
+    const client = await createClient();
+    const before = Date.now();
+
+    const reservation = await useCase.execute({
+      eventId: event.id,
+      clientId: client.id,
+      seatId: seat.id,
+    });
+
+    const expectedExpiry = before + HOLD_SECONDS * 1000;
+    expect(reservation.expiresAt.getTime()).toBeGreaterThanOrEqual(
+      expectedExpiry - 1000,
+    );
+    expect(reservation.expiresAt.getTime()).toBeLessThanOrEqual(
+      expectedExpiry + 5000,
+    );
   });
 
   it('rejects a seat that does not belong to the given event', async () => {

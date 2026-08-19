@@ -1,10 +1,13 @@
 import { Module } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ReservationEntity } from '../../shared/infra/database/entities/reservation.entity';
 import { RESERVATION_REPOSITORY } from '../../shared/domain/repositories/reservation.repository';
 import { TypeOrmReservationRepository } from '../../shared/infra/database/repositories/typeorm-reservation.repository';
+import { parseDurationToSeconds } from '../../shared/utils/parse-duration';
 import { EventsModule } from '../events/events.module';
 import { ReservationsController } from './reservations.controller';
+import { RESERVATION_HOLD_SECONDS } from './reservation-hold.token';
 import { CreateReservationUseCase } from './use-cases/create-reservation.use-case';
 
 @Module({
@@ -12,8 +15,14 @@ import { CreateReservationUseCase } from './use-cases/create-reservation.use-cas
   controllers: [ReservationsController],
   providers: [
     { provide: RESERVATION_REPOSITORY, useClass: TypeOrmReservationRepository },
+    {
+      provide: RESERVATION_HOLD_SECONDS,
+      useFactory: (config: ConfigService) =>
+        parseDurationToSeconds(config.getOrThrow('RESERVATION_HOLD_TTL')),
+      inject: [ConfigService],
+    },
     CreateReservationUseCase,
   ],
-  exports: [RESERVATION_REPOSITORY],
+  exports: [RESERVATION_REPOSITORY, RESERVATION_HOLD_SECONDS],
 })
 export class ReservationsModule {}

@@ -33,6 +33,9 @@ export class ReservationEntity implements Reservation {
   @Column('enum', { enum: ReservationStatus })
   status: ReservationStatus;
 
+  @Column('timestamptz')
+  expiresAt: Date;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 }

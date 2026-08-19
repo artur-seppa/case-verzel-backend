@@ -8,6 +8,7 @@ export const reservationResponseSchema = z.object({
   eventId: z.string(),
   clientId: z.string(),
   status: z.enum(ReservationStatus),
+  expiresAt: z.iso.datetime(),
   createdAt: z.iso.datetime(),
 });
 
@@ -18,6 +19,7 @@ export class ReservationResponseDto extends createZodDto(
 export function toReservationResponse(reservation: Reservation) {
   return {
     ...reservation,
+    expiresAt: reservation.expiresAt.toISOString(),
     createdAt: reservation.createdAt.toISOString(),
   };
 }

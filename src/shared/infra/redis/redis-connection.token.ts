@@ -1,0 +1,1 @@
+export const REDIS_CONNECTION = Symbol('REDIS_CONNECTION');
