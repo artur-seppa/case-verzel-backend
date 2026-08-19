@@ -1,11 +1,17 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { ServiceUnavailableError } from '../../domain/errors';
 import {
   CatalogMovie,
   CatalogService,
 } from '../../domain/services/catalog.service';
+import { retryWithBackoff } from '../../utils/retry-with-backoff';
 
 const POSTER_BASE_URL = 'https://image.tmdb.org/t/p/w500';
+const REQUEST_TIMEOUT_MS = 5000;
+const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
+const UNAVAILABLE_MESSAGE =
+  'Catálogo de filmes temporariamente indisponível, tente novamente mais tarde';
 
 interface TmdbMovie {
   id: number;
@@ -17,6 +23,19 @@ interface TmdbMovie {
 
 interface TmdbListResponse {
   results: TmdbMovie[];
+}
+
+class RetryableResponseError extends Error {
+  constructor(public readonly response: Response) {
+    super(`TMDb respondeu ${response.status}`);
+  }
+}
+
+function getRetryAfterMs(response: Response): number | null {
+  const header = response.headers.get('retry-after');
+  if (!header) return null;
+  const seconds = Number(header);
+  return Number.isFinite(seconds) ? seconds * 1000 : null;
 }
 
 @Injectable()
@@ -35,7 +54,10 @@ export class TmdbCatalogService implements CatalogService {
     };
   }
 
-  private async request<T>(path: string, params: Record<string, string> = {}) {
+  private async fetchTmdb(
+    path: string,
+    params: Record<string, string> = {},
+  ): Promise<Response> {
     const baseUrl = this.config.getOrThrow<string>('TMDB_BASE_URL');
     const apiKey = this.config.getOrThrow<string>('TMDB_API_KEY');
 
@@ -46,22 +68,58 @@ export class TmdbCatalogService implements CatalogService {
       url.searchParams.set(key, value);
     }
 
-    const response = await fetch(url);
-    if (!response.ok) {
-      return null;
+    try {
+      return await retryWithBackoff(
+        async () => {
+          const response = await fetch(url, {
+            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+          });
+          if (RETRYABLE_STATUS_CODES.has(response.status)) {
+            throw new RetryableResponseError(response);
+          }
+          return response;
+        },
+        {
+          attempts: 3,
+          baseDelayMs: 300,
+          isRetryable: () => true,
+          delayMsForError: (error) =>
+            error instanceof RetryableResponseError
+              ? getRetryAfterMs(error.response)
+              : null,
+        },
+      );
+    } catch (error) {
+      if (error instanceof RetryableResponseError) {
+        return error.response;
+      }
+      throw new ServiceUnavailableError(UNAVAILABLE_MESSAGE);
     }
-    return (await response.json()) as T;
   }
 
   async listNowPlaying(page: number): Promise<CatalogMovie[]> {
-    const data = await this.request<TmdbListResponse>('/movie/now_playing', {
+    const response = await this.fetchTmdb('/movie/now_playing', {
       page: String(page),
     });
-    return (data?.results ?? []).map((movie) => this.toCatalogMovie(movie));
+    if (!response.ok) {
+      throw new ServiceUnavailableError(UNAVAILABLE_MESSAGE);
+    }
+
+    const data = (await response.json()) as TmdbListResponse;
+    return data.results.map((movie) => this.toCatalogMovie(movie));
   }
 
   async getMovieById(tmdbId: string): Promise<CatalogMovie | null> {
-    const movie = await this.request<TmdbMovie>(`/movie/${tmdbId}`);
-    return movie ? this.toCatalogMovie(movie) : null;
+    const response = await this.fetchTmdb(`/movie/${tmdbId}`);
+
+    if (response.status === 404) {
+      return null;
+    }
+    if (!response.ok) {
+      throw new ServiceUnavailableError(UNAVAILABLE_MESSAGE);
+    }
+
+    const movie = (await response.json()) as TmdbMovie;
+    return this.toCatalogMovie(movie);
   }
 }

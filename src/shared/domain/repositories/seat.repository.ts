@@ -13,6 +13,7 @@ export interface SeatRepository {
   findByEventId(eventId: string): Promise<Seat[]>;
   findById(id: string): Promise<Seat | null>;
   countByEventId(eventId: string): Promise<number>;
+  holdSeat(seatId: string, reservationId: string): Promise<Seat>;
 }
 
 export const SEAT_REPOSITORY = Symbol('SEAT_REPOSITORY');

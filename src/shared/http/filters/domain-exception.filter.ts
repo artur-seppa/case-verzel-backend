@@ -7,6 +7,8 @@ import {
   Logger,
 } from '@nestjs/common';
 import { FastifyReply, FastifyRequest } from 'fastify';
+import { ZodValidationException } from 'nestjs-zod';
+import { ZodError } from 'zod';
 import { DomainError } from '../../domain/errors/domain-error';
 
 const SERVER_ERROR_THRESHOLD: number = HttpStatus.INTERNAL_SERVER_ERROR;
@@ -16,6 +18,7 @@ const DOMAIN_ERROR_STATUS: Record<string, number> = {
   CONFLICT: HttpStatus.CONFLICT,
   UNAUTHORIZED: HttpStatus.UNAUTHORIZED,
   FORBIDDEN: HttpStatus.FORBIDDEN,
+  SERVICE_UNAVAILABLE: HttpStatus.SERVICE_UNAVAILABLE,
 };
 
 @Catch()
@@ -56,6 +59,17 @@ export class DomainExceptionFilter implements ExceptionFilter {
           DOMAIN_ERROR_STATUS[exception.code] ?? HttpStatus.BAD_REQUEST,
         error: exception.code,
         message: exception.message,
+      };
+    }
+
+    if (exception instanceof ZodValidationException) {
+      const zodError = exception.getZodError() as ZodError;
+      return {
+        statusCode: exception.getStatus(),
+        error: 'VALIDATION_ERROR',
+        message: zodError.issues.map(
+          (issue) => `${issue.path.join('.') || '(body)'}: ${issue.message}`,
+        ),
       };
     }
 

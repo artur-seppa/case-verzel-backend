@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
-import { ZodSerializerDto } from 'nestjs-zod';
+import { ApiCookieAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ZodResponse } from 'nestjs-zod';
 import { UserRole } from '../../shared/domain/enums';
 import type { AuthenticatedUser } from '../../shared/http/auth-request';
 import { CurrentUser } from '../../shared/http/decorators/current-user.decorator';
@@ -31,7 +31,11 @@ export class EventsController {
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ORGANIZER)
-  @ZodSerializerDto(EventResponseDto)
+  @ApiCookieAuth('access_token')
+  @ApiOperation({
+    summary: 'Cria um evento a partir de um filme do catálogo (organizador)',
+  })
+  @ZodResponse({ status: 201, type: EventResponseDto })
   async create(
     @Body() dto: CreateEventDto,
     @CurrentUser() currentUser: AuthenticatedUser,
@@ -45,7 +49,8 @@ export class EventsController {
   }
 
   @Get()
-  @ZodSerializerDto([EventResponseDto])
+  @ApiOperation({ summary: 'Lista os eventos publicados' })
+  @ZodResponse({ status: 200, type: [EventResponseDto] })
   async list() {
     const events = await this.listEventsUseCase.execute();
     return events.map(toEventResponse);
@@ -54,14 +59,17 @@ export class EventsController {
   @Get('mine')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ORGANIZER)
-  @ZodSerializerDto([EventResponseDto])
+  @ApiCookieAuth('access_token')
+  @ApiOperation({ summary: 'Lista os eventos do organizador autenticado' })
+  @ZodResponse({ status: 200, type: [EventResponseDto] })
   async listMine(@CurrentUser() currentUser: AuthenticatedUser) {
     const events = await this.listMyEventsUseCase.execute(currentUser.id);
     return events.map(toEventResponse);
   }
 
   @Get(':id')
-  @ZodSerializerDto(EventDetailResponseDto)
+  @ApiOperation({ summary: 'Detalhe do evento, incluindo o mapa de assentos' })
+  @ZodResponse({ status: 200, type: EventDetailResponseDto })
   async getById(@Param('id') id: string) {
     const event = await this.getEventUseCase.execute(id);
     return toEventDetailResponse(event);
