@@ -28,4 +28,48 @@ export class TypeOrmReservationRepository implements ReservationRepository {
   async updateStatus(id: string, status: ReservationStatus): Promise<void> {
     await this.repository.update({ id }, { status });
   }
+
+  async startProcessingIfPending(id: string): Promise<boolean> {
+    return this.transition(
+      id,
+      ReservationStatus.PENDING_PAYMENT,
+      ReservationStatus.PROCESSING,
+    );
+  }
+
+  async confirmIfProcessing(id: string): Promise<boolean> {
+    return this.transition(
+      id,
+      ReservationStatus.PROCESSING,
+      ReservationStatus.CONFIRMED,
+    );
+  }
+
+  async revertToPendingIfProcessing(id: string): Promise<boolean> {
+    return this.transition(
+      id,
+      ReservationStatus.PROCESSING,
+      ReservationStatus.PENDING_PAYMENT,
+    );
+  }
+
+  async cancelIfPending(id: string): Promise<boolean> {
+    return this.transition(
+      id,
+      ReservationStatus.PENDING_PAYMENT,
+      ReservationStatus.CANCELLED,
+    );
+  }
+
+  private async transition(
+    id: string,
+    from: ReservationStatus,
+    to: ReservationStatus,
+  ): Promise<boolean> {
+    const result = await this.repository.update(
+      { id, status: from },
+      { status: to },
+    );
+    return (result.affected ?? 0) > 0;
+  }
 }

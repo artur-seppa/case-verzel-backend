@@ -12,6 +12,7 @@ export enum SeatStatus {
 
 export enum ReservationStatus {
   PENDING_PAYMENT = 'pending_payment',
+  PROCESSING = 'processing',
   CONFIRMED = 'confirmed',
   CANCELLED = 'cancelled',
   DECLINED = 'declined',
