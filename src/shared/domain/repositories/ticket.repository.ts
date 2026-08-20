@@ -1,3 +1,6 @@
+import { Event } from '../entities/event';
+import { Paginated, PaginationParams } from '../pagination';
+import { Seat } from '../entities/seat';
 import { Ticket } from '../entities/ticket';
 
 export interface CreateTicketInput {
@@ -10,8 +13,21 @@ export interface CreateTicketInput {
   shareToken: string;
 }
 
+export interface ValidatedTicket {
+  ticket: Ticket;
+  event: Event;
+  seat: Seat;
+}
+
 export interface TicketRepository {
   create(input: CreateTicketInput): Promise<Ticket>;
+  findById(id: string): Promise<Ticket | null>;
+  findByShareToken(shareToken: string): Promise<Ticket | null>;
+  findByClientId(
+    clientId: string,
+    pagination: PaginationParams,
+  ): Promise<Paginated<Ticket>>;
+  validate(id: string): Promise<ValidatedTicket>;
 }
 
 export const TICKET_REPOSITORY = Symbol('TICKET_REPOSITORY');

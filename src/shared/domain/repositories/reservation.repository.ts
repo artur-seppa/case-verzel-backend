@@ -11,6 +11,10 @@ export interface CreateReservationInput {
 
 export interface ReservationRepository {
   create(input: CreateReservationInput): Promise<Reservation>;
+  createWithSeatHold(
+    input: CreateReservationInput,
+    seatId: string,
+  ): Promise<Reservation>;
   findById(id: string): Promise<Reservation | null>;
   updateStatus(id: string, status: ReservationStatus): Promise<void>;
   startProcessingIfPending(id: string): Promise<boolean>;

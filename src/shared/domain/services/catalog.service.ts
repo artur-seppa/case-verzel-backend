@@ -6,8 +6,15 @@ export interface CatalogMovie {
   releaseDate: string | null;
 }
 
+export interface CatalogMoviePage {
+  items: CatalogMovie[];
+  page: number;
+  totalPages: number;
+  totalResults: number;
+}
+
 export interface CatalogService {
-  listNowPlaying(page: number): Promise<CatalogMovie[]>;
+  listNowPlaying(page: number): Promise<CatalogMoviePage>;
   getMovieById(tmdbId: string): Promise<CatalogMovie | null>;
 }
 

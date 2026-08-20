@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Event } from '../../../domain/entities/event';
+import { Paginated, PaginationParams } from '../../../domain/pagination';
 import {
   CreateEventInput,
   EventRepository,
@@ -24,14 +25,25 @@ export class TypeOrmEventRepository implements EventRepository {
     return this.repository.findOneBy({ id });
   }
 
-  findAll(): Promise<Event[]> {
-    return this.repository.find({ order: { date: 'ASC' } });
+  async findAll({ page, limit }: PaginationParams): Promise<Paginated<Event>> {
+    const [items, total] = await this.repository.findAndCount({
+      order: { date: 'ASC' },
+      skip: (page - 1) * limit,
+      take: limit,
+    });
+    return { items, total };
   }
 
-  findByOrganizerId(organizerId: string): Promise<Event[]> {
-    return this.repository.find({
+  async findByOrganizerId(
+    organizerId: string,
+    { page, limit }: PaginationParams,
+  ): Promise<Paginated<Event>> {
+    const [items, total] = await this.repository.findAndCount({
       where: { organizerId },
       order: { date: 'ASC' },
+      skip: (page - 1) * limit,
+      take: limit,
     });
+    return { items, total };
   }
 }

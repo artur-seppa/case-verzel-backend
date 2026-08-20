@@ -19,7 +19,7 @@ export class TicketEntity implements Ticket {
   @PrimaryColumn('varchar', { length: 26 })
   id: string;
 
-  @Column('varchar', { length: 26 })
+  @Column('varchar', { length: 26, unique: true })
   reservationId: string;
 
   @ManyToOne(() => ReservationEntity, { onDelete: 'CASCADE' })

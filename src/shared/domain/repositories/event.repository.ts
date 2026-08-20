@@ -1,4 +1,5 @@
 import { Event } from '../entities/event';
+import { Paginated, PaginationParams } from '../pagination';
 
 export interface CreateEventInput {
   id: string;
@@ -16,8 +17,11 @@ export interface CreateEventInput {
 export interface EventRepository {
   create(input: CreateEventInput): Promise<Event>;
   findById(id: string): Promise<Event | null>;
-  findAll(): Promise<Event[]>;
-  findByOrganizerId(organizerId: string): Promise<Event[]>;
+  findAll(pagination: PaginationParams): Promise<Paginated<Event>>;
+  findByOrganizerId(
+    organizerId: string,
+    pagination: PaginationParams,
+  ): Promise<Paginated<Event>>;
 }
 
 export const EVENT_REPOSITORY = Symbol('EVENT_REPOSITORY');

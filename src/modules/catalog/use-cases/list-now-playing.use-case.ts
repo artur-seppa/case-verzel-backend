@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { CatalogMovie } from '../../../shared/domain/services/catalog.service';
+import type { CatalogMoviePage } from '../../../shared/domain/services/catalog.service';
 import { CATALOG_SERVICE } from '../../../shared/domain/services/catalog.service';
 import type { CatalogService } from '../../../shared/domain/services/catalog.service';
 
@@ -9,7 +9,7 @@ export class ListNowPlayingUseCase {
     @Inject(CATALOG_SERVICE) private readonly catalogService: CatalogService,
   ) {}
 
-  execute(page: number): Promise<CatalogMovie[]> {
+  execute(page: number): Promise<CatalogMoviePage> {
     return this.catalogService.listNowPlaying(page);
   }
 }

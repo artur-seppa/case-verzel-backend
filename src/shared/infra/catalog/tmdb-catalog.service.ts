@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { ServiceUnavailableError } from '../../domain/errors';
 import {
   CatalogMovie,
+  CatalogMoviePage,
   CatalogService,
 } from '../../domain/services/catalog.service';
 import { retryWithBackoff } from '../../utils/retry-with-backoff';
@@ -23,6 +24,9 @@ interface TmdbMovie {
 
 interface TmdbListResponse {
   results: TmdbMovie[];
+  page: number;
+  total_pages: number;
+  total_results: number;
 }
 
 class RetryableResponseError extends Error {
@@ -97,7 +101,7 @@ export class TmdbCatalogService implements CatalogService {
     }
   }
 
-  async listNowPlaying(page: number): Promise<CatalogMovie[]> {
+  async listNowPlaying(page: number): Promise<CatalogMoviePage> {
     const response = await this.fetchTmdb('/movie/now_playing', {
       page: String(page),
     });
@@ -106,7 +110,12 @@ export class TmdbCatalogService implements CatalogService {
     }
 
     const data = (await response.json()) as TmdbListResponse;
-    return data.results.map((movie) => this.toCatalogMovie(movie));
+    return {
+      items: data.results.map((movie) => this.toCatalogMovie(movie)),
+      page: data.page,
+      totalPages: data.total_pages,
+      totalResults: data.total_results,
+    };
   }
 
   async getMovieById(tmdbId: string): Promise<CatalogMovie | null> {

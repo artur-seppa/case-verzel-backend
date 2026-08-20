@@ -32,7 +32,6 @@ async function setupEventWithOneSeat() {
 
   const useCase = new CreateReservationUseCase(
     reservationRepository,
-    seatRepository,
     HOLD_SECONDS,
   );
 
