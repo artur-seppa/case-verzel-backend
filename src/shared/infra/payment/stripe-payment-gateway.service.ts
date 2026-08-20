@@ -29,14 +29,17 @@ export class StripePaymentGatewayService implements PaymentGatewayService {
         : APPROVE_TEST_PAYMENT_METHOD;
 
     try {
-      await this.stripe.paymentIntents.create({
-        amount: Math.round(Number(input.amount) * 100),
-        currency: 'brl',
-        payment_method: paymentMethod,
-        confirm: true,
-        off_session: true,
-        description: `Reserva ${input.reservationId}`,
-      });
+      await this.stripe.paymentIntents.create(
+        {
+          amount: Math.round(Number(input.amount) * 100),
+          currency: 'brl',
+          payment_method: paymentMethod,
+          confirm: true,
+          off_session: true,
+          description: `Reserva ${input.reservationId}`,
+        },
+        { idempotencyKey: input.reservationId },
+      );
       return { approved: true };
     } catch (error) {
       if (isCardError(error)) {

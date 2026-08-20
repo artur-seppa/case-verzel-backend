@@ -46,7 +46,6 @@ async function setupPendingReservation(holdSeconds = 600) {
 
   const createReservation = new CreateReservationUseCase(
     reservationRepository,
-    seatRepository,
     holdSeconds,
   );
   const reservation = await createReservation.execute({
@@ -177,9 +176,7 @@ describe('RequestPaymentUseCase', () => {
     const rejected = results.filter((r) => r.status === 'rejected');
     expect(fulfilled).toHaveLength(1);
     expect(rejected).toHaveLength(1);
-    expect((rejected[0] as PromiseRejectedResult).reason).toBeInstanceOf(
-      ConflictError,
-    );
+    expect(rejected[0].reason).toBeInstanceOf(ConflictError);
     expect(queue.enqueued).toHaveLength(1);
   });
 });

@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from 'vitest';
 import type Stripe from 'stripe';
 import { StripePaymentGatewayService } from './stripe-payment-gateway.service';
 
-function buildStripeStub(create: (params: unknown) => Promise<unknown>) {
+function buildStripeStub(
+  create: (params: unknown, options: unknown) => Promise<unknown>,
+) {
   return {
     paymentIntents: { create },
   } as unknown as Stripe;
@@ -30,6 +32,7 @@ describe('StripePaymentGatewayService', () => {
         confirm: true,
         off_session: true,
       }),
+      { idempotencyKey: 'res_1' },
     );
   });
 
@@ -49,6 +52,7 @@ describe('StripePaymentGatewayService', () => {
     expect(result.approved).toBe(false);
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({ payment_method: 'pm_card_chargeDeclined' }),
+      { idempotencyKey: 'res_1' },
     );
   });
 

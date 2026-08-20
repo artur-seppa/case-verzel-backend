@@ -87,7 +87,7 @@ Uma recusa **não cancela a reserva** — o assento continua reservado e o clien
 
 Três pontos do fluxo disputam o mesmo recurso e usam técnicas diferentes de propósito:
 
-- **Reservar/vender/liberar assento**: lock pessimista (`SELECT ... FOR UPDATE`) dentro de uma transação — a linha do assento fica travada até a transação terminar, então duas reservas simultâneas pro mesmo lugar nunca coexistem; a segunda espera a primeira e recebe conflito.
+- **Reservar/vender/liberar assento**: lock pessimista (`SELECT ... FOR UPDATE`) dentro de uma transação — a linha do assento fica travada até a transação terminar, então duas reservas simultâneas pro mesmo lugar nunca coexistem; a segunda espera a primeira e recebe conflito. Na criação, a reserva é gravada dentro dessa mesma transação: se o lock indicar que o assento já não está disponível, nem a reserva chega a existir (não sobra um registro `cancelled` órfão pra limpar depois).
 - **Iniciar o pagamento** (`pending_payment → processing`): um `UPDATE` condicional (`WHERE status = 'pending_payment'`, compare-and-swap) garante que só uma requisição consegue fazer essa transição. Isso era necessário fazer *antes* de enfileirar o job (não depois), porque sem ele, se duas requisições chegassem ao mesmo tempo, ambas enfileiraríam jobs, e poderíamos ter duas tentativas de cobrança simultâneas — duplicação desnecessária mesmo que a segunda falhasse depois. A transição CAS no início cria um "gate" que só deixa passar uma requisição; a segunda já recebe conflito ali mesmo.
 - **Confirmar a reserva** (`processing → confirmed`): assim como na iniciação, usa um `UPDATE` condicional. A diferença é que essa confirmação só acontece se o gateway *aprovou* a cobrança — se recusar ou falhar, a reserva volta a `pending_payment`, sem nunca chegar a `confirmed`.
 
@@ -96,13 +96,14 @@ Três pontos do fluxo disputam o mesmo recurso e usam técnicas diferentes de pr
 Uma aprovação só pode confirmar a reserva **uma vez**: a confirmação é uma atualização condicional (`UPDATE ... WHERE status = 'processing' AND ...`) — se dois jobs completarem ao mesmo tempo (hipótese improvável em um Redis, mas possível em falhas de retry), só um consegue mudar o status; o outro recebe conflito. Há ainda duas camadas extras de deduplicação:
 
 - **Na fila**: BullMQ usa o `jobId` (neste caso, o `reservationId`) como chave; se duas requisições HTTP chegarem ao mesmo tempo, só uma passa pelo CAS da iniciação; a segunda já recebe conflito ali mesmo.
+- **No gateway**: a chamada à Stripe (`paymentIntents.create`) manda `reservationId` como `idempotencyKey`. Isso importa porque o BullMQ tem `attempts: 3` — se um erro transitório disparar um retry do job (mesma reserva, mesmo cartão), o retry reexecuta o use case inteiro, e sem essa chave a Stripe cobraria o cartão de novo a cada tentativa; com ela, retries do mesmo job reusam a resposta da primeira chamada em vez de criar uma cobrança nova.
 - **No banco**: `tickets.reservationId` é `UNIQUE`, então mesmo que a lógica falhasse e duas tentativas de criação chegassem ao `confirmIfProcessing`, o Postgres impediria dois ingressos pra mesma reserva com um erro de constraint.
 
 O QR do ingresso carrega o id do ingresso assinado com HMAC-SHA256 (`TICKET_QR_SECRET`) — a portaria valida a assinatura antes de sequer consultar o banco, então um código forjado é rejeitado na hora.
 
 ### Fila de pagamento
 
-A fila de pagamento (BullMQ + Redis) oferece retry automático e resiliência contra falhas transitórias na rede ou no gateway. No entanto, há um cenário de falha que fica como resíduo conhecido e documentado: **se o worker falhasse/crashasse entre o gateway aprovar a cobrança e a DB confirmar a reserva**, a reservation ficaria presa no status `processing` com um Payment record em `approved`. Nesse caso:
+A fila de pagamento (BullMQ + Redis) oferece retry automático e resiliência contra falhas transitórias na rede ou no gateway. Como a chamada à Stripe usa `reservationId` como `idempotencyKey` (ver "Idempotência e ingresso" acima), um retry automático (`attempts: 3`) do mesmo job depois de uma falha transitória não cobra o cartão de novo — e, se o crash tiver acontecido entre a aprovação e a confirmação da reserva, o próprio retry tende a destravar a reserva sozinho (a Stripe devolve a resposta já aprovada, e o use case segue até confirmar). Ainda assim, há um cenário de falha que fica como resíduo conhecido e documentado: **se o worker falhasse/crashasse de um jeito que nenhum retry chegue a rodar** (ex.: os 3 `attempts` se esgotam, ou o processo cai de forma que o job nunca é redelivered), a reservation ficaria presa no status `processing` com um Payment record em `approved`. Nesse caso:
 
 - A SSE não entregaria nada ao cliente (o job não chegaria em `completed` nem `failed`).
 - O cliente continuaria aguardando eternamente ou abriria timeout.
@@ -116,6 +117,33 @@ Toda reserva tem um prazo (`RESERVATION_HOLD_TTL`, padrão `10m`) pra ser paga; 
 
 - **Preguiçosa (garante a correção)**: se alguém tentar pagar uma reserva vencida, ela é cancelada e o assento liberado ali mesmo, na hora — não depende de nenhum job rodando.
 - **Proativa (`pg_cron`, roda a cada minuto dentro do próprio Postgres)**: libera assentos de reservas vencidas mesmo que ninguém tente pagá-las, pra quem está navegando ver o assento disponível de novo. Descartei fazer isso com um cron da aplicação (`@nestjs/schedule`) porque a correção não depende dele mesmo — e centralizar num único job dentro do banco funciona igual em dev e produção (o Supabase, usado em produção, suporta `pg_cron` nativamente), sem depender do processo da API estar de pé.
+
+## Ingressos
+
+O QR do ingresso carrega o id do ingresso assinado com HMAC-SHA256 (`TICKET_QR_SECRET`) — a portaria valida a assinatura antes de sequer consultar o banco, então um código forjado (id inventado, ou id real com assinatura trocada) é rejeitado na hora, sem tocar a base de dados.
+
+**Meus ingressos**: `GET /tickets/mine` (autenticado, cliente) lista os ingressos do cliente logado, e `GET /tickets/:id` traz o detalhe de um deles — os dois incluem o QR, então o cliente sempre consegue voltar e ver o ingresso que já comprou, mesmo sem ter guardado o link de compartilhamento.
+
+**Compartilhamento**: `GET /tickets/shared/:shareToken` é um endpoint público (sem autenticação) — o link em si é o que autoriza o acesso, não uma sessão logada. Retorna o ingresso completo (incluindo o QR) mais os dados do evento e do assento, pra quem recebe o link poder de fato usar o ingresso na portaria, não só visualizar informação.
+
+**Validação na portaria**: `POST /gatekeeper/validate` (papel `gatekeeper`) recebe o QR escaneado, valida a assinatura e faz um `UPDATE ... WHERE status = 'valid'` (mesmo padrão de compare-and-swap usado nas reservas) pra marcar o ingresso como `used`. Duas validações concorrentes do mesmo ingresso (ex.: duplo scan, ou tentativa de reuso) nunca passam as duas — só a primeira consegue, a segunda recebe conflito.
+
+## Paginação
+
+Os endpoints de listagem (`GET /events`, `GET /events/mine`, `GET /tickets/mine`, `GET /catalog/movies`) são paginados por offset (`page`/`limit`) em vez de cursor — o volume de dados desse case não justifica a complexidade extra de cursor, e dá pra mostrar "página X de Y" na UI sabendo o total de itens de antemão.
+
+Todos devolvem o mesmo envelope:
+
+```json
+{
+  "data": [ /* itens da página */ ],
+  "meta": { "page": 1, "limit": 20, "total": 57, "totalPages": 3 }
+}
+```
+
+`page` (padrão `1`) e `limit` (padrão `20`, máximo `100`) são query params opcionais, validados por Zod — ex. `GET /tickets/mine?page=2&limit=10`.
+
+`GET /catalog/movies` é a exceção: a paginação vem de graça da própria TMDb, mas eles só aceitam `page` (o tamanho da página é fixo do lado deles, não dá pra escolher `limit`) — por isso esse endpoint não aceita `limit`, e `meta.limit`/`meta.total`/`meta.totalPages` refletem o que a TMDb devolveu, não um valor calculado aqui.
 
 ## Dados de seed
 
