@@ -1,6 +1,7 @@
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 import type { Event } from '../../../shared/domain/entities/event';
+import { createPaginatedResponseDto } from '../../../shared/http/dto/pagination.dto';
 
 export const eventResponseSchema = z.object({
   id: z.string(),
@@ -17,6 +18,10 @@ export const eventResponseSchema = z.object({
 });
 
 export class EventResponseDto extends createZodDto(eventResponseSchema) {}
+
+export class PaginatedEventsResponseDto extends createPaginatedResponseDto(
+  eventResponseSchema,
+) {}
 
 export function toEventResponse(event: Event) {
   return {

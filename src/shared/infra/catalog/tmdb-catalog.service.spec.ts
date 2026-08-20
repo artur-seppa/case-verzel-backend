@@ -84,6 +84,36 @@ describe('TmdbCatalogService', () => {
     );
   });
 
+  it('returns items alongside TMDb pagination metadata', async () => {
+    mockFetchResponse({
+      ok: true,
+      status: 200,
+      json: () =>
+        Promise.resolve({
+          page: 2,
+          total_pages: 5,
+          total_results: 93,
+          results: [
+            {
+              id: 969681,
+              title: 'Homem-Aranha',
+              overview: 'Sinopse',
+              poster_path: '/poster.jpg',
+              release_date: '2026-07-29',
+            },
+          ],
+        }),
+    });
+
+    const result = await buildService().listNowPlaying(2);
+
+    expect(result.page).toBe(2);
+    expect(result.totalPages).toBe(5);
+    expect(result.totalResults).toBe(93);
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]).toMatchObject({ tmdbId: '969681' });
+  });
+
   it('retries a transient 503 and succeeds once TMDb recovers', async () => {
     const fetchMock = vi
       .fn()
