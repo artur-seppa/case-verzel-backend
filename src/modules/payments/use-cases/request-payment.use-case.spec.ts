@@ -81,11 +81,16 @@ describe('RequestPaymentUseCase', () => {
       reservationId: reservation.id,
       clientId: client.id,
       cardNumber: '4242424242424242',
+      idempotencyKey: 'attempt-1',
     });
 
     expect(result).toEqual({ reservationId: reservation.id });
     expect(queue.enqueued).toEqual([
-      { reservationId: reservation.id, cardNumber: '4242424242424242' },
+      {
+        reservationId: reservation.id,
+        cardNumber: '4242424242424242',
+        idempotencyKey: 'attempt-1',
+      },
     ]);
 
     const updated = await reservationRepository.findById(reservation.id);
@@ -104,6 +109,7 @@ describe('RequestPaymentUseCase', () => {
         reservationId: reservation.id,
         clientId: stranger.id,
         cardNumber: '4242424242424242',
+        idempotencyKey: 'attempt-1',
       }),
     ).rejects.toThrow(ForbiddenError);
   });
@@ -115,6 +121,7 @@ describe('RequestPaymentUseCase', () => {
       reservationId: reservation.id,
       clientId: client.id,
       cardNumber: '4242424242424242',
+      idempotencyKey: 'attempt-1',
     });
 
     await expect(
@@ -122,6 +129,7 @@ describe('RequestPaymentUseCase', () => {
         reservationId: reservation.id,
         clientId: client.id,
         cardNumber: '4242424242424242',
+        idempotencyKey: 'attempt-1',
       }),
     ).rejects.toThrow(ConflictError);
   });
@@ -134,6 +142,7 @@ describe('RequestPaymentUseCase', () => {
         reservationId: 'does-not-exist',
         clientId: client.id,
         cardNumber: '4242424242424242',
+        idempotencyKey: 'attempt-1',
       }),
     ).rejects.toThrow(NotFoundError);
   });
@@ -147,6 +156,7 @@ describe('RequestPaymentUseCase', () => {
         reservationId: reservation.id,
         clientId: client.id,
         cardNumber: '4242424242424242',
+        idempotencyKey: 'attempt-1',
       }),
     ).rejects.toThrow(ConflictError);
 
@@ -164,11 +174,13 @@ describe('RequestPaymentUseCase', () => {
         reservationId: reservation.id,
         clientId: client.id,
         cardNumber: '4242424242424242',
+        idempotencyKey: 'attempt-1',
       }),
       useCase.execute({
         reservationId: reservation.id,
         clientId: client.id,
         cardNumber: '4242424242424242',
+        idempotencyKey: 'attempt-1',
       }),
     ]);
 

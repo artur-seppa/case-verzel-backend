@@ -6,6 +6,7 @@ import type {
   PaymentQueueService,
 } from '../../domain/services/payment-queue.service';
 import { PAYMENTS_QUEUE_NAME } from './payments-queue.constants';
+import { chargeJobId } from './charge-job-id';
 
 @Injectable()
 export class BullMqPaymentQueueService implements PaymentQueueService {
@@ -15,7 +16,7 @@ export class BullMqPaymentQueueService implements PaymentQueueService {
 
   async enqueueCharge(input: EnqueueChargeInput): Promise<void> {
     await this.queue.add('charge-reservation', input, {
-      jobId: input.reservationId,
+      jobId: chargeJobId(input.reservationId, input.idempotencyKey),
     });
   }
 }

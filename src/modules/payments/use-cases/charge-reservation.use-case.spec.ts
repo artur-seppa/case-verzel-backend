@@ -80,6 +80,7 @@ describe('ChargeReservationUseCase', () => {
     const { payment, ticket } = await useCase.execute({
       reservationId: reservation.id,
       cardNumber: APPROVE_CARD,
+      idempotencyKey: 'attempt-1',
     });
 
     expect(payment.status).toBe(PaymentStatus.APPROVED);
@@ -100,6 +101,7 @@ describe('ChargeReservationUseCase', () => {
     const { payment, ticket } = await useCase.execute({
       reservationId: reservation.id,
       cardNumber: DECLINE_CARD,
+      idempotencyKey: 'attempt-1',
     });
 
     expect(payment.status).toBe(PaymentStatus.DECLINED);
@@ -111,19 +113,21 @@ describe('ChargeReservationUseCase', () => {
     expect(heldSeat?.status).toBe(SeatStatus.HELD);
   });
 
-  it('lets the client retry with a different card after a decline', async () => {
+  it('lets the client retry with a different card and a fresh idempotency key after a decline', async () => {
     const { reservation, reservationRepository, useCase } =
       await setupProcessingReservation();
 
     await useCase.execute({
       reservationId: reservation.id,
       cardNumber: DECLINE_CARD,
+      idempotencyKey: 'attempt-1',
     });
     await reservationRepository.startProcessingIfPending(reservation.id);
 
     const { payment, ticket } = await useCase.execute({
       reservationId: reservation.id,
       cardNumber: APPROVE_CARD,
+      idempotencyKey: 'attempt-2',
     });
 
     expect(payment.status).toBe(PaymentStatus.APPROVED);
@@ -149,6 +153,7 @@ describe('ChargeReservationUseCase', () => {
       useCase.execute({
         reservationId: otherReservation.id,
         cardNumber: APPROVE_CARD,
+        idempotencyKey: 'attempt-1',
       }),
     ).rejects.toThrow(ConflictError);
   });
@@ -160,6 +165,7 @@ describe('ChargeReservationUseCase', () => {
       useCase.execute({
         reservationId: 'does-not-exist',
         cardNumber: APPROVE_CARD,
+        idempotencyKey: 'attempt-1',
       }),
     ).rejects.toThrow(NotFoundError);
   });
@@ -169,8 +175,16 @@ describe('ChargeReservationUseCase', () => {
       await setupProcessingReservation();
 
     const results = await Promise.allSettled([
-      useCase.execute({ reservationId: reservation.id, cardNumber: APPROVE_CARD }),
-      useCase.execute({ reservationId: reservation.id, cardNumber: APPROVE_CARD }),
+      useCase.execute({
+        reservationId: reservation.id,
+        cardNumber: APPROVE_CARD,
+        idempotencyKey: 'attempt-1',
+      }),
+      useCase.execute({
+        reservationId: reservation.id,
+        cardNumber: APPROVE_CARD,
+        idempotencyKey: 'attempt-2',
+      }),
     ]);
 
     const fulfilled = results.filter((r) => r.status === 'fulfilled');

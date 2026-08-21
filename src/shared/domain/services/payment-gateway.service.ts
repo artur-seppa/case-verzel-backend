@@ -1,5 +1,6 @@
 export interface ChargeInput {
   reservationId: string;
+  idempotencyKey: string;
   amount: string;
   cardNumber: string;
 }

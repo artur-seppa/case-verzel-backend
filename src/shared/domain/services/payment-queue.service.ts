@@ -1,6 +1,7 @@
 export interface EnqueueChargeInput {
   reservationId: string;
   cardNumber: string;
+  idempotencyKey: string;
 }
 
 export interface PaymentQueueService {

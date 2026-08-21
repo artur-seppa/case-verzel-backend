@@ -7,6 +7,7 @@ describe('SimulatedPaymentGatewayService', () => {
   it('approves a charge for a card that does not match the decline pattern', async () => {
     const result = await gateway.charge({
       reservationId: 'res_1',
+      idempotencyKey: 'attempt-1',
       amount: '49.90',
       cardNumber: '4242424242424242',
     });
@@ -17,6 +18,7 @@ describe('SimulatedPaymentGatewayService', () => {
   it("declines a charge for Stripe's well-known generic-decline test card", async () => {
     const result = await gateway.charge({
       reservationId: 'res_1',
+      idempotencyKey: 'attempt-1',
       amount: '49.90',
       cardNumber: '4000000000000002',
     });

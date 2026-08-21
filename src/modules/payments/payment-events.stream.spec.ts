@@ -12,6 +12,7 @@ import { buildCreateUserInput } from '../../../test/factories/user.factory';
 import { buildCreateEventInput } from '../../../test/factories/event.factory';
 import { buildTestPaymentsQueue } from '../../../test/support/build-payments-queue-dependencies';
 import { PaymentEventsStream } from './payment-events.stream';
+import { chargeJobId } from '../../shared/infra/queue/charge-job-id';
 
 const DECLINE_CARD = 'decline';
 const ERROR_CARD = 'force-error';
@@ -102,7 +103,7 @@ describe('PaymentEventsStream', () => {
     await testQueue.queue.add(
       'charge-reservation',
       { reservationId: reservation.id, cardNumber: '4242424242424242' },
-      { jobId: reservation.id },
+      { jobId: chargeJobId(reservation.id, 'attempt-1') },
     );
 
     expect((await received).data).toMatchObject({ type: 'confirmed' });
@@ -124,7 +125,7 @@ describe('PaymentEventsStream', () => {
     await testQueue.queue.add(
       'charge-reservation',
       { reservationId: reservation.id, cardNumber: DECLINE_CARD },
-      { jobId: reservation.id },
+      { jobId: chargeJobId(reservation.id, 'attempt-1') },
     );
 
     expect((await received).data).toMatchObject({ type: 'declined' });
@@ -146,10 +147,42 @@ describe('PaymentEventsStream', () => {
     await testQueue.queue.add(
       'charge-reservation',
       { reservationId: reservation.id, cardNumber: ERROR_CARD },
-      { jobId: reservation.id, attempts: 1 },
+      { jobId: chargeJobId(reservation.id, 'attempt-1'), attempts: 1 },
     );
 
     expect((await received).data).toMatchObject({ type: 'error' });
+    await queueEvents.close();
+  });
+
+  it('emits a confirmed event for a retry after a declined attempt on the same reservation', async () => {
+    const { reservationRepository, reservation, client } =
+      await createPendingReservation();
+    const queueEvents = new QueueEvents(PAYMENTS_QUEUE_NAME, {
+      connection: testQueue.connection,
+    });
+    await queueEvents.waitUntilReady();
+    const stream = new PaymentEventsStream(reservationRepository, queueEvents);
+
+    const firstAttempt = firstValueFrom(
+      await stream.watch(reservation.id, client.id),
+    );
+    await testQueue.queue.add(
+      'charge-reservation',
+      { reservationId: reservation.id, cardNumber: DECLINE_CARD },
+      { jobId: chargeJobId(reservation.id, 'attempt-1') },
+    );
+    expect((await firstAttempt).data).toMatchObject({ type: 'declined' });
+
+    const secondAttempt = firstValueFrom(
+      await stream.watch(reservation.id, client.id),
+    );
+    await testQueue.queue.add(
+      'charge-reservation',
+      { reservationId: reservation.id, cardNumber: '4242424242424242' },
+      { jobId: chargeJobId(reservation.id, 'attempt-2') },
+    );
+
+    expect((await secondAttempt).data).toMatchObject({ type: 'confirmed' });
     await queueEvents.close();
   });
 

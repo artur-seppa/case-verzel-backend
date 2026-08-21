@@ -22,6 +22,7 @@ import { QR_SECRET, signQrToken } from '../../../shared/utils/qr-token';
 export interface ChargeReservationInput {
   reservationId: string;
   cardNumber: string;
+  idempotencyKey: string;
 }
 
 export interface ChargeReservationOutput {
@@ -65,6 +66,7 @@ export class ChargeReservationUseCase {
       reservationId: reservation.id,
       amount: event.price,
       cardNumber: input.cardNumber,
+      idempotencyKey: input.idempotencyKey,
     });
 
     const payment = await this.paymentRepository.create({

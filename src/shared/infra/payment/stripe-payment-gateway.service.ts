@@ -38,7 +38,7 @@ export class StripePaymentGatewayService implements PaymentGatewayService {
           off_session: true,
           description: `Reserva ${input.reservationId}`,
         },
-        { idempotencyKey: input.reservationId },
+        { idempotencyKey: input.idempotencyKey },
       );
       return { approved: true };
     } catch (error) {

@@ -19,6 +19,7 @@ describe('StripePaymentGatewayService', () => {
 
     const result = await gateway.charge({
       reservationId: 'res_1',
+      idempotencyKey: 'attempt-1',
       amount: '49.90',
       cardNumber: '5555555555554444',
     });
@@ -32,7 +33,7 @@ describe('StripePaymentGatewayService', () => {
         confirm: true,
         off_session: true,
       }),
-      { idempotencyKey: 'res_1' },
+      { idempotencyKey: 'attempt-1' },
     );
   });
 
@@ -45,6 +46,7 @@ describe('StripePaymentGatewayService', () => {
 
     const result = await gateway.charge({
       reservationId: 'res_1',
+      idempotencyKey: 'attempt-1',
       amount: '49.90',
       cardNumber: '4000000000000002',
     });
@@ -52,8 +54,35 @@ describe('StripePaymentGatewayService', () => {
     expect(result.approved).toBe(false);
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({ payment_method: 'pm_card_chargeDeclined' }),
-      { idempotencyKey: 'res_1' },
+      { idempotencyKey: 'attempt-1' },
     );
+  });
+
+  it('uses a distinct idempotency key per retry so a different card on the same reservation is not deduped by Stripe', async () => {
+    const create = vi
+      .fn()
+      .mockResolvedValue({ id: 'pi_123', status: 'succeeded' });
+    const gateway = new StripePaymentGatewayService(buildStripeStub(create));
+
+    await gateway.charge({
+      reservationId: 'res_1',
+      idempotencyKey: 'attempt-1',
+      amount: '49.90',
+      cardNumber: '4000000000000002',
+    });
+    await gateway.charge({
+      reservationId: 'res_1',
+      idempotencyKey: 'attempt-2',
+      amount: '49.90',
+      cardNumber: '5555555555554444',
+    });
+
+    expect(create).toHaveBeenNthCalledWith(1, expect.anything(), {
+      idempotencyKey: 'attempt-1',
+    });
+    expect(create).toHaveBeenNthCalledWith(2, expect.anything(), {
+      idempotencyKey: 'attempt-2',
+    });
   });
 
   it('rethrows non-card errors instead of treating them as a decline', async () => {
@@ -66,6 +95,7 @@ describe('StripePaymentGatewayService', () => {
     await expect(
       gateway.charge({
         reservationId: 'res_1',
+        idempotencyKey: 'attempt-1',
         amount: '49.90',
         cardNumber: '5555555555554444',
       }),

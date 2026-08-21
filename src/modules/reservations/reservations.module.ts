@@ -9,6 +9,7 @@ import { EventsModule } from '../events/events.module';
 import { ReservationsController } from './reservations.controller';
 import { RESERVATION_HOLD_SECONDS } from './reservation-hold.token';
 import { CreateReservationUseCase } from './use-cases/create-reservation.use-case';
+import { GetReservationByIdUseCase } from './use-cases/get-reservation-by-id.use-case';
 
 @Module({
   imports: [TypeOrmModule.forFeature([ReservationEntity]), EventsModule],
@@ -22,6 +23,7 @@ import { CreateReservationUseCase } from './use-cases/create-reservation.use-cas
       inject: [ConfigService],
     },
     CreateReservationUseCase,
+    GetReservationByIdUseCase,
   ],
   exports: [RESERVATION_REPOSITORY, RESERVATION_HOLD_SECONDS],
 })

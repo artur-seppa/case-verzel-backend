@@ -16,6 +16,7 @@ export interface RequestPaymentInput {
   reservationId: string;
   clientId: string;
   cardNumber: string;
+  idempotencyKey: string;
 }
 
 export interface RequestPaymentOutput {
@@ -59,6 +60,7 @@ export class RequestPaymentUseCase {
     await this.paymentQueue.enqueueCharge({
       reservationId: reservation.id,
       cardNumber: input.cardNumber,
+      idempotencyKey: input.idempotencyKey,
     });
 
     return { reservationId: reservation.id };

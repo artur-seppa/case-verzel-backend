@@ -51,8 +51,12 @@ export class PaymentsController {
       reservationId,
       clientId: currentUser.id,
       cardNumber: dto.cardNumber,
+      idempotencyKey: dto.idempotencyKey,
     });
-    return { reservationId: result.reservationId, status: 'processing' as const };
+    return {
+      reservationId: result.reservationId,
+      status: 'processing' as const,
+    };
   }
 
   @Sse('events')

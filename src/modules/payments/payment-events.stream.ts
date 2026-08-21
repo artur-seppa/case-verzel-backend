@@ -6,6 +6,7 @@ import { RESERVATION_REPOSITORY } from '../../shared/domain/repositories/reserva
 import type { ReservationRepository } from '../../shared/domain/repositories/reservation.repository';
 import type { ChargeReservationJobResult, PaymentEvent } from './payment-event';
 import { PAYMENT_QUEUE_EVENTS } from './payment-queue-events.token';
+import { jobIdBelongsToReservation } from '../../shared/infra/queue/charge-job-id';
 
 @Injectable()
 export class PaymentEventsStream {
@@ -36,7 +37,7 @@ export class PaymentEventsStream {
         jobId: string;
         returnvalue: ChargeReservationJobResult;
       }) => {
-        if (jobId !== reservationId) return;
+        if (!jobIdBelongsToReservation(jobId, reservationId)) return;
         const event: PaymentEvent = returnvalue.ticket
           ? {
               type: 'confirmed',
@@ -55,7 +56,7 @@ export class PaymentEventsStream {
         jobId: string;
         failedReason: string;
       }) => {
-        if (jobId !== reservationId) return;
+        if (!jobIdBelongsToReservation(jobId, reservationId)) return;
         const event: PaymentEvent = { type: 'error', message: failedReason };
         subscriber.next({ data: event });
         subscriber.complete();
